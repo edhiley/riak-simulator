@@ -1,4 +1,4 @@
-// Short definitions for terms in events and lesson text. Text follows the
+// Short definitions for terms in events and explainer text. Text follows the
 // writing rules in DESIGN.md. Patterns are tried in order; the first match
 // at a position wins, so longer terms come first.
 

@@ -20,6 +20,10 @@
   import Settings from "@lucide/svelte/icons/settings";
   import Play from "@lucide/svelte/icons/play";
   import Pause from "@lucide/svelte/icons/pause";
+  import SunMoon from "@lucide/svelte/icons/sun-moon";
+  import Sun from "@lucide/svelte/icons/sun";
+  import Moon from "@lucide/svelte/icons/moon";
+  import CodeXml from "@lucide/svelte/icons/code-xml";
   import { brand } from "./lib/brand.ts";
   import { about, cap, history, nodeCount, ringSize as ringSizeInfo } from "./lib/explainers.ts";
   import type { Scenario } from "./lib/scenarios.ts";
@@ -113,6 +117,7 @@
     consolePos = { x, y };
   }
   let theme = $state<(typeof THEMES)[number]>("system");
+  let nextTheme = $derived(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]);
   let error = $state("");
   let ringVersion = 0;
   let hops = $state.raw<{ hop: Hop; at: number }[]>([]);
@@ -659,7 +664,17 @@
     <Button variant="text" onclick={() => aboutInfo?.open()}>How it works</Button>
   </nav>
   <button type="button" class="icon-button" popovertarget="settings" title="Settings" aria-label="Settings"><Settings /></button>
-  <Button variant="text" onclick={() => (theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length])}>Theme: {theme}</Button>
+  <!-- One icon button: system, then light, then dark. The icon shows the current theme. -->
+  <button
+    type="button"
+    class="icon-button"
+    title="Theme: {theme}. Select for {nextTheme}."
+    aria-label="Theme: {theme}. Select for {nextTheme}."
+    onclick={() => (theme = nextTheme)}
+  >
+    {#if theme === "system"}<SunMoon />{:else if theme === "light"}<Sun />{:else}<Moon />{/if}
+  </button>
+  <a class="icon-button" href={brand.repoUrl} target="_blank" rel="noopener noreferrer" title="Source code on GitHub" aria-label="Source code on GitHub"><CodeXml /></a>
 </header>
 
 <!-- Settings: a popover, so opening it does not push the cluster down. -->
@@ -728,11 +743,6 @@
         {ring}
         {snapshot}
         {now}
-        key={null}
-        request={null}
-        selected={null}
-        onselect={() => {}}
-        live
         {hops}
         {wall}
         hopFade={HOP_FADE_MS}
@@ -825,11 +835,8 @@
         bind:open={consoleOpen}
         onpower={power}
         onadmin={admin}
-        onreset={() => void rebuild()}
         {cluster}
         nodes={ring.max_nodes}
-        lesson={null}
-        onstep={() => {}}
         onsubmit={(id, request) => {
           tracked.delete(id);
           explain(id, curl(request));

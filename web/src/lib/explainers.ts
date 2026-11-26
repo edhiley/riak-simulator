@@ -43,6 +43,7 @@ export const about: Explainer = {
     {
       heading: "Sources",
       items: [
+        { label: "This simulator's source code", href: "https://github.com/edhiley/riak-simulator", note: "on GitHub, under the Apache License 2.0" },
         { label: "OpenRiak", href: "https://github.com/OpenRiak", note: "the project and all its repositories" },
         { label: "riak", href: "https://github.com/OpenRiak/riak", note: "the release; this simulator follows tag riak-3.4.1" },
         { label: "riak_kv", href: "https://github.com/OpenRiak/riak_kv", note: "the put and get FSMs, the KV vnode" },
@@ -134,7 +135,7 @@ export const nodeCount: Explainer = {
       text: "More nodes also cost more, and with more nodes it is more probable that one of them has a problem at a given time. Riak is designed for this: one failed node does not stop the cluster.",
     },
     {
-      text: "You can add nodes to a cluster or remove nodes from it while it runs. Riak then moves some partitions to other nodes. A later lesson shows this.",
+      text: "You can add nodes to a cluster or remove nodes from it while it runs. Riak then moves some partitions to other nodes. Try it with Add a node.",
     },
   ],
 };

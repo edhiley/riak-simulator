@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- A ring in four node colours (Okabe-Ito, the same as node1 to node4) round
+       the violet seed of the page's colour scheme. Fixed colours: a favicon
+       cannot read the page's tokens. -->
+  <g fill="none" stroke-width="6" transform="rotate(-90 16 16)">
+    <circle cx="16" cy="16" r="11" stroke="#e69f00" stroke-dasharray="15.28 53.84" stroke-dashoffset="-1" />
+    <circle cx="16" cy="16" r="11" stroke="#56b4e9" stroke-dasharray="15.28 53.84" stroke-dashoffset="-18.28" />
+    <circle cx="16" cy="16" r="11" stroke="#009e73" stroke-dasharray="15.28 53.84" stroke-dashoffset="-35.56" />
+    <circle cx="16" cy="16" r="11" stroke="#f0e442" stroke-dasharray="15.28 53.84" stroke-dashoffset="-52.84" />
+  </g>
+  <circle cx="16" cy="16" r="4.5" fill="#6750a4" />
+</svg>

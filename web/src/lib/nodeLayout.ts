@@ -45,9 +45,8 @@ export interface NodeGeometry {
 }
 
 const TILE_W = 48;
-const TILE_H = 36;
-/** Live mode: taller tiles, with room for a dot per stored key. */
-const TILE_H_TALL = 76;
+/** Tiles have room for the partition number and a dot per stored key. */
+const TILE_H = 76;
 const GAP = 6;
 const PAD = 14;
 const HEADER = 50;
@@ -56,19 +55,19 @@ const HEADER = 50;
  *  With `fit`, the size of the space the drawing goes in, the cards get the
  *  number of tile columns that makes the drawing largest in that space: wide
  *  and short cards for a wide space, narrow and tall ones for a tall space. */
-export function nodeGeometry(ring: RingInfo, fallbacks: number[] = [], tall = false, fit?: { w: number; h: number }): NodeGeometry {
+export function nodeGeometry(ring: RingInfo, fallbacks: number[] = [], fit?: { w: number; h: number }): NodeGeometry {
   const counts = Array.from({ length: ring.max_nodes }, (_, n) => ring.owners.filter((o) => o === n).length);
   const perNode = new Array(ring.max_nodes).fill(0);
   for (const id of fallbacks) perNode[vnodeOf(id, ring).node]++;
   const most = Math.max(1, ...ring.members.map((n) => counts[n] + perNode[n]));
   const usual = most <= 8 ? 4 : most <= 15 ? 5 : 8;
-  if (!fit || fit.w <= 0 || fit.h <= 0) return layout(ring, fallbacks, tall, usual);
-  let best = layout(ring, fallbacks, tall, usual);
+  if (!fit || fit.w <= 0 || fit.h <= 0) return layout(ring, fallbacks, usual);
+  let best = layout(ring, fallbacks, usual);
   let bestScale = 0;
   // From 4 columns (narrower cards crowd the port strip) up to one row of
   // tiles; more columns than tiles only wastes room.
   for (let cols = Math.min(4, most); cols <= most; cols++) {
-    const g = layout(ring, fallbacks, tall, cols);
+    const g = layout(ring, fallbacks, cols);
     const [, , vw, vh] = g.viewBox.split(" ").map(Number);
     const scale = Math.min(fit.w / vw, fit.h / vh);
     // Prefer fewer columns when the gain is under 2%, so the cards do not
@@ -81,8 +80,7 @@ export function nodeGeometry(ring: RingInfo, fallbacks: number[] = [], tall = fa
   return best;
 }
 
-function layout(ring: RingInfo, fallbacks: number[], tall: boolean, cols: number): NodeGeometry {
-  const TILE_H_NOW = tall ? TILE_H_TALL : TILE_H;
+function layout(ring: RingInfo, fallbacks: number[], cols: number): NodeGeometry {
   // Counts are indexed by node number, which can have gaps after a leave.
   const counts = Array.from({ length: ring.max_nodes }, (_, n) => ring.owners.filter((o) => o === n).length);
   const extra = new Map<number, number>();
@@ -94,7 +92,7 @@ function layout(ring: RingInfo, fallbacks: number[], tall: boolean, cols: number
   const most = Math.max(1, ...ring.members.map((n) => counts[n] + perNode[n]));
   const rows = Math.ceil(most / cols);
   const w = cols * TILE_W + (cols - 1) * GAP + 2 * PAD;
-  const h = HEADER + rows * TILE_H_NOW + (rows - 1) * GAP + PAD;
+  const h = HEADER + rows * TILE_H + (rows - 1) * GAP + PAD;
 
   // Two even rows with a corridor between them. Nodes go clockwise: left
   // to right along the top row, then right to left along the bottom row.
@@ -157,7 +155,7 @@ function layout(ring: RingInfo, fallbacks: number[], tall: boolean, cols: number
     const i = id < ring.size ? slot.get(id)! : (extra.get(id) ?? 0);
     const col = i % cols;
     const row = Math.floor(i / cols);
-    return [c.x + PAD + col * (TILE_W + GAP) + TILE_W / 2, c.y + HEADER + row * (TILE_H_NOW + GAP) + TILE_H_NOW / 2];
+    return [c.x + PAD + col * (TILE_W + GAP) + TILE_W / 2, c.y + HEADER + row * (TILE_H + GAP) + TILE_H / 2];
   };
 
   return {
@@ -169,7 +167,7 @@ function layout(ring: RingInfo, fallbacks: number[], tall: boolean, cols: number
     balancer: [cx, cy],
     boxW: 120,
     boxH: 56,
-    tile: { w: TILE_W, h: TILE_H_NOW },
+    tile: { w: TILE_W, h: TILE_H },
     card,
     nodeCentre,
     strip,

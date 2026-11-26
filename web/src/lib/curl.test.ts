@@ -18,7 +18,7 @@ test("tokenizes quotes, escapes and line continuations", () => {
   assert.equal(tokenize("curl 'oops"), "A single quote is not closed.");
 });
 
-test("a lesson PUT", () => {
+test("a PUT with a header and a body", () => {
   const r = ok(`curl -X PUT localhost:8098/buckets/users/keys/alice -H 'Content-Type: text/plain' -d 'Alice'`);
   assert.deepEqual(r, {
     node: null, method: "PUT", path: "/buckets/users/keys/alice",

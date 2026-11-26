@@ -1,27 +1,20 @@
 <script lang="ts">
   // The cluster as nodes. Each node is a card; its partitions (vnodes) are
-  // tiles in the node's colour. The current key's copies are outlined, and
-  // every message in flight is drawn at its position for the current
-  // simulation time.
+  // tiles in the node's colour, with a dot for each stored key. Every
+  // message in flight is a pulse at its position for the current
+  // simulation time, and an arrived message leaves a fading streak.
   import { isHandoff, nodeGeometry, route } from "../lib/nodeLayout.ts";
   import { hideTooltip, showTooltip } from "../lib/tooltip.svelte.ts";
-  import { shortKey } from "../lib/text.ts";
   import Pixels from "./Pixels.svelte";
   import { laptop, server, splitter, spriteSize } from "../lib/pixels.ts";
   import { PALETTE, movers } from "../lib/characters.ts";
   import { endpointPos } from "../lib/nodeLayout.ts";
-  import { vnodeOf, progressAt, type KeyInfo, type RequestView, type RingInfo, type Snapshot } from "../lib/sim.ts";
+  import { vnodeOf, progressAt, type RingInfo, type Snapshot } from "../lib/sim.ts";
 
   let {
     ring,
     snapshot,
     now,
-    key,
-    value = undefined,
-    request,
-    selected,
-    onselect,
-    live = false,
     onpower = undefined,
     onleave = undefined,
     hops = [],
@@ -43,14 +36,6 @@
     ring: RingInfo;
     snapshot: Snapshot;
     now: number;
-    key: KeyInfo | null;
-    /** The value the client last saw: undefined if unknown, null if none. */
-    value?: string | null;
-    request: RequestView | null;
-    selected: number | null;
-    onselect: (id: number) => void;
-    /** Live mode: messages are pulses with no labels, and arrived messages fade. */
-    live?: boolean;
     /** Node controls on each card, when given. */
     onpower?: (node: number, stop: boolean) => void;
     onleave?: (node: number) => void;
@@ -67,23 +52,21 @@
 
   // Arrived messages: the whole path fades, and a ring grows at the target.
   let streaks = $derived(
-    live
-      ? hops.map(({ hop, at }) => {
-          const age = Math.min(1, Math.max(0, (wall - at) / hopFade));
-          const r = route(hop.from, hop.to, ring, g, hop.label);
-          const [tx, ty] = r.at(1);
-          return {
-            d: r.d,
-            handoff: isHandoff(hop.label),
-            colour: sourceColour(hop.from),
-            opacity: 0.6 * (1 - age),
-            x: tx,
-            y: ty,
-            r: 10 + 26 * age,
-            flash: 0.9 * (1 - age) ** 2,
-          };
-        })
-      : [],
+    hops.map(({ hop, at }) => {
+      const age = Math.min(1, Math.max(0, (wall - at) / hopFade));
+      const r = route(hop.from, hop.to, ring, g, hop.label);
+      const [tx, ty] = r.at(1);
+      return {
+        d: r.d,
+        handoff: isHandoff(hop.label),
+        colour: sourceColour(hop.from),
+        opacity: 0.6 * (1 - age),
+        x: tx,
+        y: ty,
+        r: 10 + 26 * age,
+        flash: 0.9 * (1 - age) ** 2,
+      };
+    }),
   );
 
   // Fallback vnodes, and new owners' copies of moving partitions: both are
@@ -92,9 +75,9 @@
   // The size of the space the drawing has, for fit.
   let boxW = $state(0);
   let boxH = $state(0);
-  let g = $derived(nodeGeometry(ring, fallbacks.map((v) => v.id), live, fit ? { w: boxW, h: boxH } : undefined));
+  let g = $derived(nodeGeometry(ring, fallbacks.map((v) => v.id), fit ? { w: boxW, h: boxH } : undefined));
 
-  // Live mode: each tile shows a dot for each key it stores. The dots
+  // Each tile shows a dot for each key it stores. The dots
   // share the space below the partition number and shrink as more arrive.
   const NUMBER_BAND = 26;
   const MAX_DOT = 7;
@@ -136,15 +119,6 @@
   let nodes = $derived(ring.members);
   let leaving = $derived(new Set(snapshot.leaving));
   let down = $derived(new Set(snapshot.down));
-  // The vnodes the last request for this key used, which can include a
-  // fallback vnode; otherwise the key's usual vnodes.
-  let replicas = $derived(
-    new Set(
-      request && key && request.key === key.key && request.preflist.length
-        ? request.preflist
-        : (key?.preflist.map((r) => r.partition) ?? []),
-    ),
-  );
   let vnodes = $derived(new Map(snapshot.vnodes.map((v) => [v.id, v])));
 
   // The FSMs running on each node: one for each read, write, delete or list
@@ -171,21 +145,19 @@
     dist: "Erlang distribution: one TCP connection to each other node. An FSM on another node sends its commands in here, addressed to each vnode's own proxy process.",
   };
 
-  // The trail covers the last 0.35 of the path. Live mode uses more,
-  // shorter segments, so the taper is smooth.
-  let WAKE_SEGMENTS = $derived(live ? 24 : 10);
-  let WAKE_STEP = $derived(0.35 / WAKE_SEGMENTS);
+  // The wake covers the last 0.35 of the path, in short segments so the
+  // taper is smooth.
+  const WAKE_SEGMENTS = 24;
+  const WAKE_STEP = 0.35 / WAKE_SEGMENTS;
 
   let dots = $derived(
     snapshot.messages.map((m) => {
       const r = route(m.from, m.to, ring, g, m.label);
       const t = progressAt(m, now);
       const [x, y] = r.at(t);
-      const owner = (e: typeof m.from) => (e.kind === "node" ? e.id : e.kind === "vnode" ? vnodeOf(e.id, ring).node : -1);
-      const local = owner(m.from) >= 0 && owner(m.from) === owner(m.to);
-      // A trail behind a moving message: short segments that fade out.
-      const held = m.deliver === null;
-      const wake = held
+      // A wake behind a moving message: short segments that fade out. A
+      // message that is not yet scheduled has none.
+      const wake = m.deliver === null
         ? []
         : Array.from({ length: WAKE_SEGMENTS }, (_, i) => {
             const t1 = Math.max(0, t - i * WAKE_STEP);
@@ -195,23 +167,10 @@
             const fade = 1 - i / WAKE_SEGMENTS;
             return { x0, y0, x1, y1, opacity: 0.8 * fade, width: 4 + 10 * fade };
           }).filter((s) => s.x0 !== s.x1 || s.y0 !== s.y1);
-      return { m, x, y, path: r.d, held, local, wake };
+      return { m, x, y, wake };
     }),
   );
 
-  const list = (items: number[]) =>
-    items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
-  const pillWidth = (label: string) => 32 + label.length * 13.5;
-  const chipWidth = (text: string) => text.length * 17 + 28;
-  const MAX_VALUE = 200;
-  let valueText = $derived(
-    value === undefined
-      ? "Value not known yet. Read or write the object to see it."
-      : value === null
-        ? "No value. The object is not found or is deleted."
-        : `Value: ${value.length > MAX_VALUE ? `${value.slice(0, MAX_VALUE)}…` : value}`,
-  );
-  let keyLabel = $derived(key ? `Key: ${shortKey(key.key)}` : "");
 </script>
 
 <div class="fit" class:fill={fit} bind:clientWidth={boxW} bind:clientHeight={boxH}>
@@ -224,7 +183,7 @@
   <!-- Nodes and their partitions -->
   {#each nodes as n (n)}
     {@const c = g.card(n)}
-    <g class="node" class:coordinator={request?.coordinator === n} class:down={down.has(n)}>
+    <g class="node" class:down={down.has(n)}>
       <rect x={c.x} y={c.y} width={c.w} height={c.h} rx="14" class="card" />
       <rect x={c.x} y={c.y} width={c.w} height="38" rx="14" class="band" style:fill="var(--node-{n})" />
       <rect x={c.x} y={c.y + 22} width={c.w} height="16" class="band" style:fill="var(--node-{n})" />
@@ -247,10 +206,6 @@
         <text x={c.x + c.w - 12} y={c.y + 20} class="role" style:fill="var(--node-{n}-on)">leaving</text>
       {:else if down.has(n)}
         <text x={c.x + c.w - 12} y={c.y + 20} class="role" style:fill="var(--node-{n}-on)">stopped</text>
-      {:else if request?.coordinator === n}
-        <text x={c.x + c.w - 12} y={c.y + 20} class="role" style:fill="var(--node-{n}-on)">coordinator</text>
-      {:else if request?.arrived && request.origin === n}
-        <text x={c.x + c.w - 12} y={c.y + 20} class="role" style:fill="var(--node-{n}-on)">received</text>
       {/if}
     </g>
   {/each}
@@ -330,10 +285,9 @@
     </g>
   {/snippet}
 
-  <!-- A tile's number; in live mode, also a dot for each stored key. -->
+  <!-- A tile's number, and a dot for each stored key. -->
   {#snippet tileBody(tx: number, ty: number, colour: number, p: number, v: import("../lib/sim.ts").VnodeView | undefined)}
-    {#if live}
-      {@const top = ty - g.tile.h / 2}
+    {@const top = ty - g.tile.h / 2}
       {@const area = { w: g.tile.w - 8, h: g.tile.h - NUMBER_BAND - 6 }}
       {@const cy = top + NUMBER_BAND + 2 + area.h / 2}
       {@const objects = v?.objects ?? []}
@@ -384,17 +338,13 @@
         {/each}
         </g>
       {/if}
-    {:else}
-      <text x={tx} y={ty} style:fill="var(--node-{colour}-on)">{p}</text>
-    {/if}
   {/snippet}
-  <g class="tiles" class:focused={key !== null} class:spotlight={hovered !== null}>
+  <g class="tiles" class:spotlight={hovered !== null}>
     {#each ring.owners as owner, p (p)}
       {@const [tx, ty] = g.tileCentre(p)}
       {@const v = vnodes.get(p)}
       <g
         class:holds={holderIds.has(p)}
-        class:replica={replicas.has(p)}
         class:busy={v?.busy}
         class:off={down.has(owner)}
         class:folding={v?.folding}
@@ -420,7 +370,7 @@
     {#each fallbacks as v (v.id)}
       {@const [tx, ty] = g.tileCentre(v.id)}
       {@const usual = ring.owners[v.partition]}
-      <g class="fallback" class:holds={holderIds.has(v.id)} class:replica={replicas.has(v.id)} class:busy={v.busy}>
+      <g class="fallback" class:holds={holderIds.has(v.id)} class:busy={v.busy}>
         <rect x={tx - g.tile.w / 2} y={ty - g.tile.h / 2} width={g.tile.w} height={g.tile.h} rx="6" style:fill="var(--node-{usual})">
           <title
             >{v.moving
@@ -439,19 +389,14 @@
 
   <!-- Messages -->
   {#each dots as d (d.m.id)}
-    <path d={d.path} class="trail" class:hidden={live} class:local={d.local} class:selected={selected === d.m.id} />
-  {/each}
-  {#each dots as d (d.m.id)}
     {#each d.wake as w, i (i)}
-      <line x1={w.x0} y1={w.y0} x2={w.x1} y2={w.y1} class="wake" stroke-width={w.width} stroke-opacity={w.opacity} style:stroke={live ? sourceColour(d.m.from) : undefined} />
+      <line x1={w.x0} y1={w.y0} x2={w.x1} y2={w.y1} class="wake" stroke-width={w.width} stroke-opacity={w.opacity} style:stroke={sourceColour(d.m.from)} />
     {/each}
   {/each}
-  {#if live}
-    {#each streaks as s, i (i)}
-      <path d={s.d} class="streak" class:handoff={s.handoff} style:stroke={s.colour} stroke-opacity={s.opacity} />
-      <circle cx={s.x} cy={s.y} r={s.r} class="flash" style:stroke={s.colour} stroke-opacity={s.flash} />
-    {/each}
-  {/if}
+  {#each streaks as s, i (i)}
+    <path d={s.d} class="streak" class:handoff={s.handoff} style:stroke={s.colour} stroke-opacity={s.opacity} />
+    <circle cx={s.x} cy={s.y} r={s.r} class="flash" style:stroke={s.colour} stroke-opacity={s.flash} />
+  {/each}
   <!-- Clients and load balancer: drawn over the message lines, under the
        pulses, so the balancer in the middle stays readable. -->
   <g class="edge">
@@ -467,65 +412,20 @@
     <text x={g.balancer[0] + 18} y={g.balancer[1] + 11}>balancer</text>
   </g>
 
-  <!-- The key in the middle of the cluster -->
-  <g class="centre">
-    {#if key}
-      <text x={g.centre[0]} y={g.centre[1] - 58} class="centre-label">{key.bucket.bucket_type ? `${key.bucket.bucket_type} / ` : ""}{key.bucket.bucket}</text>
-      <g
-        class="hover"
-        role="img"
-        aria-label="Key {key.key}"
-        onmouseenter={(e) => key && key.key !== shortKey(key.key) && showTooltip(e.currentTarget, `Key: ${key.key}`)}
-        onmouseleave={hideTooltip}
-      >
-        <rect x={g.centre[0] - chipWidth(keyLabel) / 2} y={g.centre[1] - 39} width={chipWidth(keyLabel)} height="46" rx="8" class="key-chip" />
-        <text x={g.centre[0]} y={g.centre[1] - 16} class="key-text">{keyLabel}</text>
-      </g>
-      <g
-        class="hover"
-        role="button"
-        tabindex="0"
-        aria-label={valueText}
-        onmouseenter={(e) => showTooltip(e.currentTarget, valueText)}
-        onmouseleave={hideTooltip}
-        onfocus={(e) => showTooltip(e.currentTarget, valueText)}
-        onblur={hideTooltip}
-      >
-        <rect x={g.centre[0] - 48} y={g.centre[1] + 14} width="96" height="32" rx="16" class="value-chip" />
-        <text x={g.centre[0]} y={g.centre[1] + 30} class="value-text">Value</text>
-      </g>
-      <text x={g.centre[0]} y={g.centre[1] + 66} class="centre-label">partitions {list(key.preflist.map((r) => r.partition))}</text>
-    {/if}
-  </g>
 
   <!-- Ports and FSMs: over the message lines, under the pulses. -->
   {#each nodes as n (n)}
     <g class="strip-wrap" class:down={down.has(n)}>{@render portStrip(n)}</g>
   {/each}
   {#each dots as d (d.m.id)}
-    {#if live && d.m.label === "handoff"}
+    {#if d.m.label === "handoff"}
       <!-- Movers carry a partition's data to the new node. -->
       <g class="mover-stage">
         <rect x={d.x - 22} y={d.y - 22} width="44" height="44" rx="8" style:fill="var(--pix-paper)" style:stroke={sourceColour(d.m.from)} />
         <Pixels sprite={movers[step]} x={d.x - 19} y={d.y - 19} pixel={1.6} palette={PALETTE} />
       </g>
-    {:else if live}
-      <circle cx={d.x} cy={d.y} r="9" class="pulse" style:fill={sourceColour(d.m.from)} />
     {:else}
-    <g
-      class="msg"
-      class:held={d.held}
-      class:selected={selected === d.m.id}
-      transform="translate({d.x},{d.y})"
-      role="button"
-      tabindex="0"
-      aria-label="Message {d.m.label}. Select to hold or slow it."
-      onclick={() => onselect(d.m.id)}
-      onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onselect(d.m.id)}
-    >
-      <rect x={-pillWidth(d.m.label) / 2} y="-20" width={pillWidth(d.m.label)} height="40" rx="20" />
-      <text>{d.m.label}</text>
-    </g>
+      <circle cx={d.x} cy={d.y} r="9" class="pulse" style:fill={sourceColour(d.m.from)} />
     {/if}
   {/each}
 </svg>
@@ -578,10 +478,6 @@
     stroke: var(--md-sys-color-outline-variant);
     stroke-width: var(--stroke-hairline);
   }
-  .coordinator .card {
-    stroke: var(--md-sys-color-on-surface);
-    stroke-width: var(--stroke-focus);
-  }
   .node-name {
     font: var(--type-title-large);
     text-anchor: start;
@@ -629,10 +525,6 @@
     font: var(--type-title-medium);
     pointer-events: none;
   }
-  .focused g:not(.replica) rect,
-  .focused g:not(.replica) > text {
-    opacity: var(--dim);
-  }
   /* A stopped node: greyed out. */
   .node.down,
   .strip-wrap.down {
@@ -647,10 +539,6 @@
     stroke-width: var(--stroke-thick);
     stroke-dasharray: 5 3;
   }
-  .replica rect {
-    stroke: var(--md-sys-color-on-surface);
-    stroke-width: var(--stroke-focus);
-  }
   .busy rect {
     stroke: var(--md-sys-color-on-surface);
     stroke-width: var(--stroke-focus);
@@ -663,48 +551,13 @@
     font: var(--type-label-medium);
     fill: var(--md-sys-color-inverse-on-surface);
   }
-  .centre-label {
-    font: var(--type-label-large);
-    fill: var(--md-sys-color-on-surface-variant);
-    /* A halo in the background colour, so message lines do not cross the text. */
-    paint-order: stroke;
-    stroke: var(--md-sys-color-surface-container);
-    stroke-width: var(--space-1);
-    stroke-linejoin: round;
-  }
-  .key-chip {
-    fill: var(--md-sys-color-tertiary-container);
-  }
   .hover {
     cursor: help;
   }
   .hover:focus-visible {
     outline: none;
   }
-  .hover:focus-visible rect {
-    stroke: var(--md-sys-color-on-surface);
-    stroke-width: var(--stroke-focus);
-  }
-  .value-chip {
-    fill: none;
-    stroke: var(--md-sys-color-tertiary);
-    stroke-width: var(--stroke-hairline);
-  }
-  .value-text {
-    font: var(--type-label-large);
-    fill: var(--md-sys-color-tertiary);
-    text-decoration: underline dotted;
-  }
-  .key-text {
-    font: var(--type-key);
-    fill: var(--md-sys-color-on-tertiary-container);
-  }
-  .trail {
-    stroke: var(--md-sys-color-outline);
-    stroke-width: var(--stroke-thick);
-    fill: none;
-  }
-  /* Live mode tiles: a dot for each stored key. */
+  /* Tiles: a dot for each stored key. */
   .divider {
     stroke-width: var(--stroke-hairline);
     stroke-dasharray: 2 3;
@@ -765,10 +618,7 @@
     stroke: var(--md-sys-color-primary);
     stroke-width: var(--stroke-focus);
   }
-  .trail.hidden {
-    display: none;
-  }
-  /* Live mode. */
+  /* Messages. */
   .pulse {
     stroke: var(--md-sys-color-surface-container-lowest);
     stroke-width: var(--stroke-thick);
@@ -837,43 +687,10 @@
     stroke-width: var(--stroke-focus);
     pointer-events: none;
   }
-  /* The fading trail behind a moving message. */
+  /* The fading wake behind a moving message. */
   .wake {
     stroke: var(--md-sys-color-inverse-surface);
     stroke-linecap: round;
     pointer-events: none;
-  }
-  /* A message inside one node: no network. */
-  .trail.local {
-    stroke-dasharray: 3 6;
-  }
-  .trail.selected {
-    stroke: var(--md-sys-color-on-surface);
-    stroke-width: var(--stroke-focus);
-  }
-  .msg {
-    cursor: pointer;
-  }
-  .msg rect {
-    fill: var(--md-sys-color-inverse-surface);
-  }
-  .msg text {
-    font: var(--type-code-xl);
-    fill: var(--md-sys-color-inverse-on-surface);
-  }
-  .msg.held rect {
-    fill: var(--md-sys-color-error-container);
-    stroke: var(--md-sys-color-error);
-    stroke-width: var(--stroke-thick);
-  }
-  .msg.held text {
-    fill: var(--md-sys-color-on-error-container);
-  }
-  .msg.selected rect {
-    stroke: var(--md-sys-color-primary);
-    stroke-width: var(--stroke-focus);
-  }
-  .msg:focus-visible {
-    outline: none;
   }
 </style>

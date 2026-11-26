@@ -1,47 +1,28 @@
 <script lang="ts">
-  import { untrack } from "svelte";
-  // Guided lesson plus a command line. A lesson command can run at once or
-  // go into the input for editing. Replies arrive later, in simulation
-  // time, and are matched to their command by request id.
+  // The console: a command line for curl requests and riak commands.
+  // Replies arrive later, in simulation time, and are matched to their
+  // command by request id.
   import Button from "./Button.svelte";
-  import Terms from "./Terms.svelte";
   import { parseCommand } from "../lib/curl.ts";
-  import { lessons, partLetter, type Lesson } from "../lessons/index.ts";
   import type { Cluster, HttpResponse } from "../lib/sim.ts";
 
   let {
     cluster,
     nodes,
-    lesson,
     onsubmit,
-    onstep,
     onpower,
     onadmin = () => ({ ok: false, text: "Cluster commands are not available here." }),
-    onreset,
-    canContinue = false,
-    running = false,
-    oncontinue = () => {},
     open = $bindable(false),
   }: {
     cluster: Cluster;
     nodes: number;
-    /** The lesson, or null for the console only (live mode). */
-    lesson: Lesson | null;
     onsubmit: (id: number, request: import("../lib/curl.ts").ParsedRequest) => void;
-    onstep: (step: import("../lessons/index.ts").LessonStep) => void;
     /** The command line is shown. */
     open?: boolean;
     /** Stop or start a node. Returns an error message, or null. */
     onpower: (node: number, stop: boolean) => string | null;
     /** `riak admin cluster join|leave|plan|commit` on a node. */
     onadmin?: (node: number, action: string, target: number | null) => { ok: boolean; text: string };
-    /** Start the lesson again on a new cluster. */
-    onreset: () => void;
-    /** The simulation is paused at a step of a running request. */
-    canContinue?: boolean;
-    /** A request is running, in pause-at-each-step playback. */
-    running?: boolean;
-    oncontinue?: () => void;
   } = $props();
 
   interface Entry {
@@ -52,31 +33,10 @@
     error: boolean;
   }
 
-  let step = $state(0);
-  // The part whose command has run. Run is then off and Next is the next
-  // thing to do, until the part changes.
-  let ran = $state<number | null>(null);
-  let done = $derived(ran === step);
-
-  function goTo(i: number) {
-    step = i;
-    ran = null;
-  }
   let input = $state("");
   let log = $state<Entry[]>([]);
   let logEl: HTMLElement | undefined = $state();
   let inputEl: HTMLTextAreaElement | undefined = $state();
-
-  let current = $derived(lesson?.steps[step] ?? null);
-  // Tell the page when the lesson step changes. Untracked, so a new
-  // callback from the page does not count as a change of step.
-  $effect(() => {
-    const c = current;
-    if (c) untrack(() => onstep(c));
-  });
-  let latest = $derived(log.length ? log[log.length - 1] : null);
-  // This part's command has run and its last reply has arrived.
-  let finished = $derived(done && !!latest && latest.output !== "Waiting for the reply.");
 
   function scroll() {
     queueMicrotask(() => logEl?.scrollTo({ top: logEl.scrollHeight }));
@@ -123,16 +83,9 @@
     scroll();
   }
 
-  /** Run commands from outside, such as the live mode buttons. */
+  /** Run commands from outside, such as the buttons on a node card. */
   export function runCommands(commands: string[]) {
     for (const c of commands) runLine(c);
-  }
-
-  function edit() {
-    if (!current) return;
-    input = current.command;
-    open = true;
-    queueMicrotask(() => inputEl?.focus());
   }
 
   /** A summary line for many requests at once (a batch, traffic or a
@@ -217,64 +170,6 @@
   }
 </script>
 
-{#if lesson && current}
-<section class="lesson" aria-labelledby="lesson-title">
-  <div class="lesson-head">
-    <span class="overline">Lesson {lessons.indexOf(lesson) + 1}</span>
-    <h2 id="lesson-title">{lesson.title}</h2>
-  </div>
-  <div class="parts-row">
-    <nav class="parts" aria-label="Parts of this lesson">
-      {#each lesson.steps as s, i (i)}
-        <button
-          type="button"
-          class:current={i === step}
-          aria-current={i === step ? "step" : undefined}
-          title="Part {partLetter(i)}: {s.title}"
-          onclick={() => goTo(i)}>{partLetter(i)}</button
-        >
-      {/each}
-    </nav>
-    <span class="spacer"></span>
-    <Button variant={finished && !canContinue ? "go" : "text"} disabled={step === lesson.steps.length - 1} onclick={() => goTo(step + 1)}>Next part</Button>
-  </div>
-  <h3>Part {partLetter(step)}: {current.title}</h3>
-  {#each current.text as paragraph, i (i)}
-    <p><Terms text={paragraph} /></p>
-  {/each}
-  <pre class="suggested">{current.command}</pre>
-  <div class="actions">
-    <Button
-      disabled={done && !current.repeat}
-      onclick={() => {
-        run(current.command);
-        ran = step;
-      }}>Run</Button
-    >
-    <Button variant="text" onclick={edit}>Edit</Button>
-    <!-- Shown while this part's request runs, so the buttons do not move.
-         Green when paused at a step; off while the next step plays. -->
-    {#if done && (running || canContinue)}
-      <Button variant={canContinue ? "go" : "tonal"} disabled={!canContinue} onclick={oncontinue}>Continue</Button>
-    {/if}
-    <Button
-      variant="text"
-      title="Start the lesson again from part A, on a new cluster"
-      onclick={() => {
-        goTo(0);
-        onreset();
-      }}>Reset</Button
-    >
-  </div>
-  {#if !open && latest}
-    <p class="latest" class:error={latest.error} aria-live="polite">
-      <span class="field-label">Reply</span>
-      <span class="mono">{latest.output.split("\n")[0]}</span>
-    </p>
-  {/if}
-</section>
-{/if}
-
 {#if open}
 <section class="repl" aria-label="Command line">
   <div class="log" bind:this={logEl} aria-live="polite">
@@ -321,58 +216,6 @@
     flex-direction: column;
     gap: var(--space-2);
   }
-  /* Three levels: lesson (overline and title), parts (letters), part title. */
-  .lesson-head {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-  .overline {
-    font: var(--type-label-large);
-    letter-spacing: var(--tracking-label);
-    color: var(--md-sys-color-primary);
-  }
-  h2 {
-    margin: 0;
-    font: var(--type-title-large);
-  }
-  .parts-row {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: center;
-    gap: var(--space-1);
-    margin-top: var(--space-2);
-  }
-  .parts {
-    display: flex;
-    gap: var(--space-1);
-  }
-  .parts button {
-    min-width: calc(var(--size-target) - var(--space-1));
-    min-height: calc(var(--size-target) - var(--space-1));
-    padding: 0;
-    border: var(--stroke-hairline) solid var(--md-sys-color-outline);
-    border-radius: var(--shape-full);
-    background: none;
-    color: var(--md-sys-color-on-surface);
-    font: var(--type-label-large);
-    cursor: pointer;
-  }
-  .parts button:hover {
-    background: var(--md-sys-color-surface-container-highest);
-  }
-  .parts button.current {
-    border-color: transparent;
-    background: var(--md-sys-color-secondary-container);
-    color: var(--md-sys-color-on-secondary-container);
-  }
-  h3 {
-    margin: var(--space-2) 0 0;
-    padding-top: var(--space-3);
-    border-top: var(--stroke-hairline) solid var(--md-sys-color-outline-variant);
-    font: var(--type-title-medium);
-    letter-spacing: var(--tracking-title-medium);
-  }
   .field-label {
     font: var(--type-label-medium);
     letter-spacing: var(--tracking-label);
@@ -389,11 +232,6 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  .suggested {
-    padding: var(--space-3);
-    border-radius: var(--shape-small);
-    background: var(--md-sys-color-surface-container-highest);
-  }
   .actions {
     display: flex;
     align-items: center;
@@ -401,18 +239,6 @@
   }
   .spacer {
     flex: 1;
-  }
-  .latest {
-    display: flex;
-    gap: var(--space-2);
-    align-items: baseline;
-  }
-  .latest .mono {
-    font: var(--type-code);
-    color: var(--md-sys-color-on-surface);
-  }
-  .latest.error .mono {
-    color: var(--md-sys-color-error);
   }
   .repl {
     margin-top: var(--space-2);

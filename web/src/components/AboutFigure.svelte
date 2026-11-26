@@ -57,7 +57,7 @@
   <rect x={PAGE.x} y={PAGE.y} width={PAGE.w} height={PAGE.h} rx="14" class="page" />
   <text x="280" y={PAGE.y + 26} class="title on-page">Page (Svelte, TypeScript)</text>
   <text x="280" y={PAGE.y + 52} class="small on-page">draws every message in flight</text>
-  <text x="280" y={PAGE.y + 74} class="small on-page">requests · lessons · REPL</text>
+  <text x="280" y={PAGE.y + 74} class="small on-page">requests · scenarios · console</text>
 </svg>
 
 <style>

@@ -361,7 +361,7 @@ pub struct RequestState {
     keys: std::collections::BTreeSet<String>,
     #[serde(skip)]
     folds_pending: usize,
-    /// List keys: keys read in all the folds, in every bucket.
+    /// List keys: keys read in all the folds, from the bucket's range of each ledger.
     #[serde(skip)]
     keys_scanned: usize,
     /// A data type read: vnodes asked for their value and not yet answered,
@@ -2123,8 +2123,8 @@ impl Sim {
         (b.bucket, scanned, found)
     }
 
-    /// The fold runs in the vnode's worker pool: it reads every key, and
-    /// sends a chunk each time 100 keys are found, spread over its time.
+    /// The fold runs in the vnode's worker pool: it reads the bucket's range
+    /// of the ledger, and sends a chunk each time 100 keys are found, spread over its time.
     fn start_fold(&mut self, p: usize, rid: u64, first: &[usize]) {
         let Some(req) = self.requests.get(&rid).cloned() else { return };
         let b = req.bucket.clone().unwrap();
@@ -2486,7 +2486,7 @@ impl Sim {
             Op::ListKeys if status == 200 => {
                 let nodes: std::collections::BTreeSet<usize> = r.preflist.iter().map(|&p| self.owner(p)).collect();
                 format!(
-                    "Listed {} keys in bucket {bucket}. {coord} asked {} vnodes on {} nodes. Their folds read {} keys in all, in every bucket, to find them. A read of one key asks 3 vnodes.",
+                    "Listed {} keys in bucket {bucket}. {coord} asked {} vnodes on {} nodes. Their folds read {} keys in all from the bucket's range of each ledger, because each vnode also has copies that another vnode answers for. A read of one key asks 3 vnodes.",
                     r.keys.len(),
                     r.preflist.len(),
                     nodes.len(),
