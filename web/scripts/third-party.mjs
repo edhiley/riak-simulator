@@ -1,7 +1,7 @@
 // Writes public/THIRD-PARTY-LICENSES.txt, and copies LICENSE and NOTICE into
 // public/, so that the built page ships with every licence it needs.
 // Run with `npm run licenses` (the build runs it too).
-import { readFileSync, writeFileSync, copyFileSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, copyFileSync, readdirSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -64,6 +64,7 @@ for (const [name, p] of [...seen].sort()) {
 }
 
 const pub = join(web, "public");
+mkdirSync(pub, { recursive: true });
 writeFileSync(join(pub, "THIRD-PARTY-LICENSES.txt"), out.join("\n"));
 copyFileSync(join(root, "LICENSE"), join(pub, "LICENSE.txt"));
 copyFileSync(join(root, "NOTICE"), join(pub, "NOTICE.txt"));
