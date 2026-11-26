@@ -1,0 +1,9 @@
+[package]
+name = "riak-sim-core"
+version = "0.1.0"
+edition = "2021"
+description = "Deterministic simulation of a Riak KV cluster, free of I/O"
+license = "Apache-2.0"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

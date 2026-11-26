@@ -1,0 +1,38 @@
+Riak Simulator
+Copyright 2026 Ed Hiley
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This is a learning tool. It is not part of OpenRiak, and the OpenRiak
+project and its maintainers do not endorse it.
+
+The simulator is a new program. It contains no code from Riak. Its model
+follows the behaviour, names and default settings of OpenRiak 3.4.1, from
+these repositories, which are under the Apache License, Version 2.0:
+
+  https://github.com/OpenRiak/riak        (tag riak-3.4.1)
+  https://github.com/OpenRiak/riak_kv
+  https://github.com/OpenRiak/riak_core
+  https://github.com/OpenRiak/riak_api
+  https://github.com/OpenRiak/leveled
+
+Riak was developed at Basho Technologies. The NOTICE file of OpenRiak/riak
+says:
+
+  Riak
+  Copyright 2007-2009 Basho Technologies
+
+  This product contains code developed at Basho Technologies.
+  (http://www.basho.com/)
+
+  The gen_server2 and priority_queue modules are provided
+  by LShift Ltd, and can also be found in the RabbitMQ
+  sources at http://www.rabbitmq.com/
+
+Thanks to Basho Technologies, bet365, the OpenRiak community and the
+Erlang Ecosystem Foundation, and to everyone who has worked on these
+repositories. Leveled began as Martin Sumner's project
+(https://github.com/martinsumner/leveled).
+
+Third-party software included in the built page is listed, with its
+licence texts, in THIRD-PARTY-LICENSES.txt.

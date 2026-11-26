@@ -1,0 +1,9 @@
+/target
+/web/node_modules
+/web/dist
+/web/src/wasm/pkg
+# Written by `npm run licenses` during the build
+/web/public/LICENSE.txt
+/web/public/NOTICE.txt
+/web/public/THIRD-PARTY-LICENSES.txt
+.DS_Store
