@@ -57,3 +57,10 @@ test("rejects what it does not support", () => {
   assert.match(err("wget localhost:8098/ping"), /not a command/);
   assert.match(err("curl https://localhost:8098/ping"), /HTTPS/);
 });
+
+test("every curl example in the console help parses", async () => {
+  const { examples } = await import("./consoleExamples.ts");
+  for (const { items } of examples)
+    for (const { command } of items)
+      for (const line of command.split("\n")) if (line.startsWith("curl ")) ok(line, 8);
+});

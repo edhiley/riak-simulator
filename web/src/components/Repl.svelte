@@ -3,7 +3,9 @@
   // Replies arrive later, in simulation time, and are matched to their
   // command by request id.
   import Button from "./Button.svelte";
+  import CircleQuestionMark from "@lucide/svelte/icons/circle-question-mark";
   import { parseCommand } from "../lib/curl.ts";
+  import { examples } from "../lib/consoleExamples.ts";
   import type { Cluster, HttpResponse } from "../lib/sim.ts";
 
   let {
@@ -47,6 +49,28 @@
   // "node6$ riak admin cluster join node1": membership changes, staged and
   // then committed, as in Riak. "riak-admin" also works.
   const ADMIN = /^node(\d+)\$\s*riak[\s-]admin\s+cluster\s+(join|leave|plan|commit)(?:\s+node(\d+))?$/;
+
+  // The help list: example commands, and the recent commands that can run
+  // again. Selecting one puts it in the input, to edit or run.
+  let help = $state(false);
+  const runnable = (c: string) => ADMIN.test(c) || POWER.test(c) || parseCommand(c, nodes).ok;
+  let recent = $derived.by(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (let i = log.length - 1; i >= 0 && out.length < 8; i--) {
+      const c = log[i].command;
+      if (!seen.has(c) && runnable(c)) {
+        seen.add(c);
+        out.push(c);
+      }
+    }
+    return out;
+  });
+  function use(command: string) {
+    input = command;
+    help = false;
+    queueMicrotask(() => inputEl?.focus());
+  }
 
   function run(text: string) {
     for (const line of text.split("\n")) runLine(line);
@@ -172,6 +196,32 @@
 
 {#if open}
 <section class="repl" aria-label="Command line">
+  {#if help}
+  <div class="log help" aria-label="Example commands">
+    <p class="hint">Select a command to put it in the input. Then edit it, or press Enter to run it.</p>
+    {#if recent.length}
+      <h3>Recent</h3>
+      <ul>
+        {#each recent as c (c)}
+          <li><button type="button" class="example" onclick={() => use(c)}><pre>{c}</pre></button></li>
+        {/each}
+      </ul>
+    {/if}
+    {#each examples as g (g.group)}
+      <h3>{g.group}</h3>
+      <ul>
+        {#each g.items as ex (ex.command)}
+          <li>
+            <button type="button" class="example" onclick={() => use(ex.command)}>
+              <span class="example-label">{ex.label}</span>
+              <pre>{ex.command}</pre>
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/each}
+  </div>
+  {:else}
   <div class="log" bind:this={logEl} aria-live="polite">
     {#each log as entry, i (i)}
       <pre class="command">$ {entry.command}</pre>
@@ -179,10 +229,11 @@
     {:else}
       <p class="hint">
         Each command is an HTTP request. Use curl. The host localhost is the load balancer, which sends each request to the next node in turn. The hosts node1, node2 and so on are the nodes themselves.
-        You can also type a method and a path, for example <code>GET /ping</code>. To stop or start a node, type for example <code>node3$ riak stop</code> or <code>node3$ riak start</code>. To change the cluster, use <code>riak admin cluster join</code>, <code>leave</code>, <code>plan</code> and <code>commit</code>.
+        You can also type a method and a path, for example <code>GET /ping</code>. To stop or start a node, type for example <code>node3$ riak stop</code> or <code>node3$ riak start</code>. To change the cluster, use <code>riak admin cluster join</code>, <code>leave</code>, <code>plan</code> and <code>commit</code>. For example commands, select the question mark below.
       </p>
     {/each}
   </div>
+  {/if}
   <label class="field">
     <span class="field-label">Command</span>
     <textarea
@@ -196,6 +247,15 @@
       placeholder="curl localhost:8098/ping"></textarea>
   </label>
   <div class="actions">
+    <button
+      type="button"
+      class="help-button"
+      class:on={help}
+      aria-expanded={help}
+      title={help ? "Show the log" : "Example and recent commands"}
+      aria-label={help ? "Show the log" : "Example and recent commands"}
+      onclick={() => (help = !help)}><CircleQuestionMark /></button
+    >
     <span class="field-label">Enter: run. Shift+Enter: new line.</span>
     <span class="spacer"></span>
     <Button
@@ -267,6 +327,62 @@
   }
   .hint code {
     font: var(--type-code-small);
+  }
+  .help h3 {
+    margin: var(--space-2) 0 0;
+    font: var(--type-title-small);
+    color: var(--md-sys-color-on-surface);
+  }
+  .help ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .example {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    width: 100%;
+    padding: var(--space-2);
+    border: none;
+    border-radius: var(--shape-small);
+    background: var(--md-sys-color-surface-container);
+    color: var(--md-sys-color-on-surface);
+    text-align: left;
+    cursor: pointer;
+  }
+  .example:hover {
+    background: var(--md-sys-color-surface-container-highest);
+  }
+  .example:focus-visible {
+    outline: var(--stroke-focus) solid var(--md-sys-color-primary);
+  }
+  .example-label {
+    font: var(--type-label-medium);
+    color: var(--md-sys-color-on-surface-variant);
+  }
+  .help-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--size-target);
+    height: var(--size-target);
+    padding: 0;
+    border: none;
+    border-radius: var(--shape-full);
+    background: none;
+    color: var(--md-sys-color-on-surface-variant);
+    cursor: pointer;
+  }
+  .help-button:hover {
+    background: var(--md-sys-color-surface-container-highest);
+  }
+  .help-button.on {
+    background: var(--md-sys-color-secondary-container);
+    color: var(--md-sys-color-on-secondary-container);
   }
   .field {
     display: flex;
